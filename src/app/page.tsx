@@ -4,50 +4,100 @@ import { Suspense } from 'react';
 import { dehydrate, HydrationBoundary } from '@tanstack/react-query';
 import { getQueryClient } from './getQueryClient';
 import { HomeClient, homeQueryOptions } from '@/_pages/home';
+import { getHomeData } from '@/app/api/_data/homeService';
+import type { MockApiScenario } from '@/types/commerce';
 import { HeroSection } from '@/examples/week-07-performance/HeroSection';
 
-export async function generateMetadata(): Promise<Metadata> {
-  const queryClient = getQueryClient();
-  const { banner } = await queryClient.fetchQuery(homeQueryOptions());
-
-  return {
-    title: banner.title,
-    description: banner.description,
-    openGraph: {
-      title: `${banner.title} | Aesthetic`,
-      description: banner.description,
-      images: [{ url: banner.image }],
-      siteName: 'Aesthetic',
-      locale: 'ko_KR',
-      type: 'website',
-    },
-  };
+interface HomeDataProps {
+  scenario?: MockApiScenario;
 }
 
-export default async function HomePage() {
+interface HomePageProps {
+  searchParams: Promise<{
+    scenario?: string | string[];
+  }>;
+}
+
+const HOME_SCENARIOS = [
+  'empty',
+  'error',
+  'slow',
+] as const satisfies readonly MockApiScenario[];
+
+const isHomeScenario = (value: string): value is MockApiScenario =>
+  HOME_SCENARIOS.some((scenario) => scenario === value);
+
+function parseHomeScenario(
+  value: string | string[] | undefined,
+): MockApiScenario | undefined {
+  if (typeof value !== 'string') return undefined;
+
+  return isHomeScenario(value) ? value : undefined;
+}
+
+async function HomeData({ scenario }: HomeDataProps) {
   const queryClient = getQueryClient();
-  const { banner } = await queryClient.ensureQueryData(homeQueryOptions());
+  const query = homeQueryOptions(scenario);
+
+  await queryClient.fetchQuery(query);
 
   return (
-    <main>
-      <HeroSection
-        title={banner.title}
-        description={banner.description}
-      />
-      <HydrationBoundary state={dehydrate(queryClient)}>
-        <Suspense
-          fallback={
-            <div className="flex min-h-[30vh] items-center justify-center">
-              <div className="flex flex-col items-center gap-3">
-                <div className="size-8 animate-spin rounded-full border-2 border-border border-t-brand" />
-                <p className="text-sm text-text-secondary">불러오는 중...</p>
-              </div>
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <HomeClient scenario={scenario} />
+    </HydrationBoundary>
+  );
+}
+
+export async function generateMetadata({
+  searchParams,
+}: HomePageProps): Promise<Metadata> {
+  try {
+    const params = await searchParams;
+    const scenario = parseHomeScenario(params.scenario);
+    const queryClient = getQueryClient();
+    const { banner } = await queryClient.fetchQuery(
+      homeQueryOptions(scenario),
+    );
+
+    return {
+      title: banner.title,
+      description: banner.description,
+      openGraph: {
+        title: `${banner.title} | Aesthetic`,
+        description: banner.description,
+        images: [{ url: banner.image }],
+        siteName: 'Aesthetic',
+        locale: 'ko_KR',
+        type: 'website',
+      },
+    };
+  } catch {
+    return {};
+  }
+}
+
+export default async function HomePage({ searchParams }: HomePageProps) {
+  const params = await searchParams;
+  const scenario = parseHomeScenario(params.scenario);
+  const { banner } = getHomeData();
+
+  return (
+    <main className="bg-white text-neutral-950">
+      <div className="px-4 sm:px-6 lg:px-8">
+        <HeroSection title={banner.title} description={banner.description} />
+      </div>
+      <Suspense
+        fallback={
+          <div className="flex min-h-[30vh] items-center justify-center px-4 sm:px-6">
+            <div className="flex flex-col items-center gap-3">
+              <div className="size-7 animate-spin rounded-full border-2 border-neutral-200 border-t-neutral-950 motion-reduce:animate-none" />
+              <p className="text-sm text-neutral-600">불러오는 중...</p>
             </div>
-          }
-        >
-          <HomeClient />
-        </Suspense>
-      </HydrationBoundary>
+          </div>
+        }
+      >
+        <HomeData scenario={scenario} />
+      </Suspense>
     </main>
   );
 }
